@@ -16,6 +16,7 @@ interface Row {
   meeting_id: string | null;
   password: string | null;
   interviewers: string;
+  organizer: string;
   status: string;
   notes: string;
   raw_text: string;
@@ -36,6 +37,7 @@ const SCHEMA_STATEMENTS = [
   meeting_id TEXT,
   password TEXT,
   interviewers TEXT NOT NULL DEFAULT '',
+  organizer TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'scheduled',
   notes TEXT NOT NULL DEFAULT '',
   raw_text TEXT NOT NULL DEFAULT '',
@@ -45,11 +47,24 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_interviews_start ON interviews(start_time)`,
 ];
 
+const MIGRATIONS = [
+  `ALTER TABLE interviews ADD COLUMN organizer TEXT NOT NULL DEFAULT ''`,
+];
+
 let schemaReady = false;
 
 async function ensureSchema(db: D1Database): Promise<void> {
   if (schemaReady) return;
   for (const sql of SCHEMA_STATEMENTS) {
+    await db.prepare(sql).run();
+  }
+  const { results } = await db
+    .prepare(`SELECT name FROM pragma_table_info('interviews')`)
+    .all<{ name: string }>();
+  const columns = new Set(results.map((r) => r.name));
+  for (const sql of MIGRATIONS) {
+    const target = sql.match(/ADD COLUMN\s+(\w+)/i)?.[1];
+    if (target && columns.has(target)) continue;
     await db.prepare(sql).run();
   }
   schemaReady = true;
@@ -68,6 +83,7 @@ function rowToInterview(row: Row): Interview {
     meetingId: row.meeting_id,
     password: row.password,
     interviewers: row.interviewers ?? "",
+    organizer: row.organizer ?? "",
     status: (row.status as InterviewStatus) ?? "scheduled",
     notes: row.notes ?? "",
     rawText: row.raw_text ?? "",
@@ -82,6 +98,7 @@ const STATUSES: InterviewStatus[] = [
   "completed",
   "cancelled",
   "rejected",
+  "failed",
 ];
 const PLATFORMS: Platform[] = ["feishu", "tencent", "zoom", "teams", "google", "other"];
 
@@ -107,6 +124,7 @@ function normalizeInput(body: Record<string, unknown>): InterviewInput {
     meetingId: nullableStr(body.meetingId),
     password: nullableStr(body.password),
     interviewers: str(body.interviewers),
+    organizer: str(body.organizer),
     status: (STATUSES.includes(status as InterviewStatus) ? status : "scheduled") as InterviewStatus,
     notes: str(body.notes),
     rawText: str(body.rawText),
@@ -142,8 +160,8 @@ async function createInterview(env: Env, request: Request): Promise<Response> {
   await env.DB.prepare(
     `INSERT INTO interviews
       (id, company, position, round, start_time, end_time, platform, meeting_url,
-       meeting_id, password, interviewers, status, notes, raw_text, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       meeting_id, password, interviewers, organizer, status, notes, raw_text, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -157,6 +175,7 @@ async function createInterview(env: Env, request: Request): Promise<Response> {
       input.meetingId,
       input.password,
       input.interviewers,
+      input.organizer,
       input.status,
       input.notes,
       input.rawText,
@@ -177,8 +196,8 @@ async function updateInterview(env: Env, id: string, request: Request): Promise<
   await env.DB.prepare(
     `UPDATE interviews SET
       company = ?, position = ?, round = ?, start_time = ?, end_time = ?, platform = ?,
-      meeting_url = ?, meeting_id = ?, password = ?, interviewers = ?, status = ?, notes = ?,
-      raw_text = ?, updated_at = ?
+      meeting_url = ?, meeting_id = ?, password = ?, interviewers = ?, organizer = ?, status = ?,
+      notes = ?, raw_text = ?, updated_at = ?
      WHERE id = ?`,
   )
     .bind(
@@ -192,6 +211,7 @@ async function updateInterview(env: Env, id: string, request: Request): Promise<
       input.meetingId,
       input.password,
       input.interviewers,
+      input.organizer,
       input.status,
       input.notes,
       input.rawText,

@@ -140,6 +140,7 @@ const ROUND_RE =
 function normalize(input: string): string {
   return input
     .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/[\u3000\t]/g, " ")
     .replace(/[〜～]/g, "~")
     .replace(/[\u2013\u2014\u2212]/g, "-");
@@ -156,9 +157,9 @@ function detectPlatform(text: string): Platform {
 }
 
 function extractUrl(text: string): string | null {
-  const m = text.match(/https?:\/\/[^\s<>"'）)】\]，,。]+/i);
+  const m = text.match(/https?:\/\/[^\s<>"'（）()【】\[\]，,。]+/i);
   if (!m) return null;
-  return m[0].replace(/[）)】\]。，,、]+$/, "");
+  return m[0].replace(/[）()】\]（(【\[]+$/, "");
 }
 
 function extractMeetingId(text: string): string | null {
@@ -414,12 +415,20 @@ function splitSubject(subject: string): string[] {
     .filter(Boolean);
 }
 
+const ROUND_ALIASES: Record<string, string> = {
+  初面: "一面",
+};
+
+function normalizeRound(value: string): string {
+  return ROUND_ALIASES[value] ?? value;
+}
+
 function extractRound(subject: string, full: string): string {
   const fromSubject = subject.match(ROUND_RE);
-  if (fromSubject) return fromSubject[1];
+  if (fromSubject) return normalizeRound(fromSubject[1]);
   const fromFull = full.match(ROUND_RE);
-  if (fromFull) return fromFull[1];
-  return "";
+  if (fromFull) return normalizeRound(fromFull[1]);
+  return "一面";
 }
 
 function extractCompany(subject: string, full: string): string {
@@ -432,6 +441,12 @@ function extractCompany(subject: string, full: string): string {
     }
     if (best) return best;
   }
+  for (const h of haystacks) {
+    const m = h.match(
+      /([\u4e00-\u9fa5A-Za-z0-9]{2,20})\([^)]{1,12}\)[^，,。\s]{0,20}(?:有限公司|股份有限公司|集团)/,
+    );
+    if (m) return m[1];
+  }
   for (const token of splitSubject(subject)) {
     if (COMPANY_SUFFIX.test(token)) return token;
   }
@@ -440,17 +455,32 @@ function extractCompany(subject: string, full: string): string {
   return "";
 }
 
+const POSITION_TOKEN_RE =
+  /^[\u4e00-\u9fa5A-Za-z]{2,12}(?:工程师|开发|经理|专家|架构师)$/;
+
+function trimPosition(value: string): string {
+  return value.replace(/开发工程师$/, "开发");
+}
+
 function extractPosition(subject: string, full: string): string {
+  let structural = "";
+  for (const token of splitSubject(subject)) {
+    if (POSITION_TOKEN_RE.test(token) && token.length > structural.length) {
+      structural = token;
+    }
+  }
+  if (structural) return trimPosition(structural);
+
   const haystacks = [subject, full];
   for (const h of haystacks) {
     let best = "";
     for (const p of POSITION_KEYWORDS) {
       if (h.includes(p) && p.length > best.length) best = p;
     }
-    if (best) return best;
+    if (best) return trimPosition(best);
   }
   const m = subject.match(/([\u4e00-\u9fa5A-Za-z]{2,12}(?:工程师|开发|经理|专家|架构师))/);
-  if (m) return m[1];
+  if (m) return trimPosition(m[1]);
   return "";
 }
 
@@ -459,6 +489,62 @@ function extractInterviewers(text: string): string {
     /(?:面试官|面试官姓名|招聘官|面试人|考官|面试负责人|Interviewer)\s*[:：]\s*([^\n]{1,40})/i,
   );
   return m ? m[1].trim() : "";
+}
+
+function extractOrganizer(lines: string[], text: string): string {
+  const label = text.match(
+    /(?:组织者|组织人|发起人|主持人|主办方|组织)\s*[:：]\s*([^\n，,。;；]{1,30})/,
+  );
+  if (label) return label[1].trim();
+  for (const line of lines) {
+    const cn = line.match(/^(.{1,24}?)\s*邀请你(?:加入|参加)/);
+    if (cn) return cn[1].trim();
+    const en = line.match(/^(.{1,30}?)\s+invited you/i);
+    if (en) return en[1].trim();
+  }
+  return "";
+}
+
+const NOTES_START_RE = /[【\[]\s*注意事项\s*[】\]]\s*[:：]?\s*(.*)$/;
+const SECTION_HEAD_RE = /^\s*[【\[][^】\]]{1,20}[】\]]\s*$/;
+
+function isFooter(line: string): boolean {
+  if (/^(公司地址|公司名称|地址|招聘邮箱|官网)\s*[:：]?/.test(line)) return true;
+  if (/(人力资源部|人力资源中心|招聘团队|此致|敬礼)\s*$/.test(line)) return true;
+  if (/(有限公司|股份有限公司|集团|研究院)\s*$/.test(line)) return true;
+  return false;
+}
+
+function extractNotes(text: string): string {
+  const lines = text.split(/\r?\n/);
+  let start = -1;
+  let inline = "";
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const bracketed = line.match(NOTES_START_RE);
+    if (bracketed) {
+      start = i;
+      inline = bracketed[1].trim();
+      break;
+    }
+    if (/^注意事项\s*[:：]?\s*(.*)$/.test(line)) {
+      start = i;
+      inline = line.replace(/^注意事项\s*[:：]?\s*/, "").trim();
+      break;
+    }
+  }
+  if (start === -1) return "";
+
+  const collected: string[] = [];
+  if (inline) collected.push(inline);
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (SECTION_HEAD_RE.test(line)) break;
+    if (isFooter(line)) break;
+    collected.push(line);
+  }
+  return collected.join("\n");
 }
 
 export function parseMeeting(input: string, now: Date = new Date()): ParseResult {
@@ -477,6 +563,8 @@ export function parseMeeting(input: string, now: Date = new Date()): ParseResult
   const company = extractCompany(subject, text);
   const position = extractPosition(subject, text);
   const interviewers = extractInterviewers(text);
+  const organizer = extractOrganizer(lines, text);
+  const notes = extractNotes(input.replace(/[\u200B-\u200D\uFEFF]/g, ""));
   const { startTime, endTime, warnings } = extractDateTime(text, now);
 
   let confidence = 0;
@@ -499,6 +587,8 @@ export function parseMeeting(input: string, now: Date = new Date()): ParseResult
     meetingId,
     password,
     interviewers,
+    organizer,
+    notes,
     warnings,
     confidence,
   };

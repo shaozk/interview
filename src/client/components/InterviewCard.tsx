@@ -51,6 +51,12 @@ export function InterviewCard({ interview, onEdit, onDelete, onStatusChange }: P
             <dd>{interview.password}</dd>
           </div>
         )}
+        {interview.organizer && (
+          <div>
+            <dt>组织者</dt>
+            <dd>{interview.organizer}</dd>
+          </div>
+        )}
         {interview.interviewers && (
           <div>
             <dt>面试官</dt>

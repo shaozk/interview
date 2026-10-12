@@ -3,7 +3,8 @@ export type InterviewStatus =
   | "scheduled"
   | "completed"
   | "cancelled"
-  | "rejected";
+  | "rejected"
+  | "failed";
 
 export type Platform =
   | "feishu"
@@ -25,6 +26,7 @@ export interface Interview {
   meetingId: string | null;
   password: string | null;
   interviewers: string;
+  organizer: string;
   status: InterviewStatus;
   notes: string;
   rawText: string;
@@ -45,6 +47,8 @@ export interface ParsedMeeting {
   meetingId: string | null;
   password: string | null;
   interviewers: string;
+  organizer: string;
+  notes: string;
   warnings: string[];
   confidence: number;
 }
@@ -58,9 +62,10 @@ export interface ParseResult {
 export const STATUS_LABELS: Record<InterviewStatus, string> = {
   "to-schedule": "待安排",
   scheduled: "待面试",
-  completed: "已面试",
+  completed: "通过",
   cancelled: "已取消",
   rejected: "已拒绝",
+  failed: "已挂",
 };
 
 export const STATUS_ORDER: InterviewStatus[] = [
@@ -69,6 +74,7 @@ export const STATUS_ORDER: InterviewStatus[] = [
   "completed",
   "cancelled",
   "rejected",
+  "failed",
 ];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {

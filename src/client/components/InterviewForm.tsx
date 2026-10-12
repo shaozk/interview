@@ -32,6 +32,7 @@ function toInput(interview?: Interview | null): InterviewInput {
       meetingId: null,
       password: null,
       interviewers: "",
+      organizer: "",
       status: "scheduled",
       notes: "",
       rawText: "",
@@ -48,6 +49,7 @@ function toInput(interview?: Interview | null): InterviewInput {
     meetingId: interview.meetingId,
     password: interview.password,
     interviewers: interview.interviewers,
+    organizer: interview.organizer,
     status: interview.status,
     notes: interview.notes,
     rawText: interview.rawText,
@@ -80,6 +82,8 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
       meetingId: m.meetingId ?? prev.meetingId,
       password: m.password ?? prev.password,
       interviewers: m.interviewers || prev.interviewers,
+      organizer: m.organizer || prev.organizer,
+      notes: m.notes || prev.notes,
       rawText: paste,
     }));
     setWarnings(result.warnings);
@@ -209,7 +213,11 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
           <span>会议链接</span>
           <input value={form.meetingUrl ?? ""} onChange={(e) => set("meetingUrl", e.target.value || null)} />
         </label>
-        <label className="field full">
+        <label className="field">
+          <span>组织者</span>
+          <input value={form.organizer} onChange={(e) => set("organizer", e.target.value)} />
+        </label>
+        <label className="field">
           <span>面试官</span>
           <input
             value={form.interviewers}

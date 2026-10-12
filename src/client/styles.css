@@ -211,6 +211,10 @@ textarea {
   border-left-color: #9ca3af;
 }
 
+.card[data-status="failed"] {
+  border-left-color: #ef4444;
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
@@ -276,6 +280,11 @@ textarea {
 .badge.status-rejected {
   background: #f1f5f9;
   color: #64748b;
+}
+
+.badge.status-failed {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 /* calendar */
@@ -362,6 +371,11 @@ textarea {
   color: #64748b;
 }
 
+.calendar-chip.status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .chip-time {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
@@ -375,7 +389,7 @@ textarea {
 /* kanban */
 .kanban {
   display: grid;
-  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  grid-template-columns: repeat(6, minmax(180px, 1fr));
   gap: 12px;
   overflow-x: auto;
 }
@@ -409,6 +423,10 @@ textarea {
 .kanban-head.status-to-schedule {
   background: #fef3c7;
   color: #92400e;
+}
+.kanban-head.status-failed {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .kanban-body {
@@ -484,6 +502,10 @@ textarea {
 .timeline-dot.status-cancelled,
 .timeline-dot.status-rejected {
   background: #9ca3af;
+}
+
+.timeline-dot.status-failed {
+  background: #ef4444;
 }
 
 .timeline-content {
@@ -598,6 +620,6 @@ textarea {
     grid-template-columns: 1fr;
   }
   .kanban {
-    grid-template-columns: repeat(5, 180px);
+    grid-template-columns: repeat(6, 180px);
   }
 }

@@ -35,6 +35,7 @@ function toInput(i: Interview): InterviewInput {
     meetingId: i.meetingId,
     password: i.password,
     interviewers: i.interviewers,
+    organizer: i.organizer,
     status: i.status,
     notes: i.notes,
     rawText: i.rawText,
