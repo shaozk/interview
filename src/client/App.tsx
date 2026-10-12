@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { InterviewForm } from "./components/InterviewForm";
+import { ExportDialog } from "./components/ExportDialog";
+import { buildMonthSchedule } from "./schedule";
 import {
   STATUS_LABELS,
   type Interview,
@@ -50,6 +52,7 @@ export function App() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Interview | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [exportText, setExportText] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -152,6 +155,9 @@ export function App() {
           <button className="btn" onClick={() => void load()}>
             刷新
           </button>
+          <button className="btn" onClick={() => setExportText(buildMonthSchedule(interviews))}>
+            导出本月日程
+          </button>
           <button className="btn primary" onClick={openCreate}>
             + 新建面试
           </button>
@@ -215,6 +221,10 @@ export function App() {
             />
           </div>
         </div>
+      )}
+
+      {exportText !== null && (
+        <ExportDialog text={exportText} onClose={() => setExportText(null)} />
       )}
     </div>
   );

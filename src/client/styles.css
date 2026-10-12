@@ -615,6 +615,16 @@ textarea {
   justify-content: flex-end;
 }
 
+.export-text {
+  width: 100%;
+  margin: 8px 0 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre;
+  overflow: auto;
+}
+
 @media (max-width: 720px) {
   .grid {
     grid-template-columns: 1fr;
