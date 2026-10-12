@@ -86,13 +86,24 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
     setConfidence(result.confidence);
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSave() {
     onSubmit({ ...form, rawText: form.rawText || paste });
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === "INPUT") {
+      e.preventDefault();
+    }
+  }
+
   return (
-    <form className="form" onSubmit={handleSubmit}>
+    <form
+      className="form"
+      onSubmit={(e) => e.preventDefault()}
+      onKeyDown={handleKeyDown}
+    >
       <div className="paste-block">
         <label className="field">
           <span>粘贴会议内容（自动解析）</span>
@@ -216,7 +227,7 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
       </div>
 
       <div className="form-actions">
-        <button type="submit" className="btn primary" disabled={submitting}>
+        <button type="button" className="btn primary" onClick={handleSave} disabled={submitting}>
           {submitting ? "保存中…" : "保存"}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
