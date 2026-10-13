@@ -1,4 +1,16 @@
 import type { Interview, InterviewInput, InterviewStatus, Platform } from "../shared/types";
+import {
+  clearedSessionCookie,
+  hashPassword,
+  isExpired,
+  parseSessionCookie,
+  randomToken,
+  sessionCookie,
+  sessionExpiry,
+  verifyPassword,
+  type SessionUser,
+} from "./auth";
+import { rateLimit } from "./ratelimit";
 
 interface Env {
   DB: D1Database;
@@ -6,6 +18,7 @@ interface Env {
 
 interface Row {
   id: string;
+  user_id: string | null;
   company: string;
   position: string;
   round: string;
@@ -22,52 +35,6 @@ interface Row {
   raw_text: string;
   created_at: string;
   updated_at: string;
-}
-
-const SCHEMA_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS interviews (
-  id TEXT PRIMARY KEY,
-  company TEXT NOT NULL DEFAULT '',
-  position TEXT NOT NULL DEFAULT '',
-  round TEXT NOT NULL DEFAULT '',
-  start_time TEXT,
-  end_time TEXT,
-  platform TEXT NOT NULL DEFAULT 'other',
-  meeting_url TEXT,
-  meeting_id TEXT,
-  password TEXT,
-  interviewers TEXT NOT NULL DEFAULT '',
-  organizer TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'scheduled',
-  notes TEXT NOT NULL DEFAULT '',
-  raw_text TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-)`,
-  `CREATE INDEX IF NOT EXISTS idx_interviews_start ON interviews(start_time)`,
-];
-
-const MIGRATIONS = [
-  `ALTER TABLE interviews ADD COLUMN organizer TEXT NOT NULL DEFAULT ''`,
-];
-
-let schemaReady = false;
-
-async function ensureSchema(db: D1Database): Promise<void> {
-  if (schemaReady) return;
-  for (const sql of SCHEMA_STATEMENTS) {
-    await db.prepare(sql).run();
-  }
-  const { results } = await db
-    .prepare(`SELECT name FROM pragma_table_info('interviews')`)
-    .all<{ name: string }>();
-  const columns = new Set(results.map((r) => r.name));
-  for (const sql of MIGRATIONS) {
-    const target = sql.match(/ADD COLUMN\s+(\w+)/i)?.[1];
-    if (target && columns.has(target)) continue;
-    await db.prepare(sql).run();
-  }
-  schemaReady = true;
 }
 
 function rowToInterview(row: Row): Interview {
@@ -131,40 +98,158 @@ function normalizeInput(body: Record<string, unknown>): InterviewInput {
   };
 }
 
-function json(data: unknown, status = 200): Response {
+async function readBody(request: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body = (await request.json()) as unknown;
+    return body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8", ...headers },
   });
 }
 
-async function listInterviews(env: Env): Promise<Response> {
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM interviews
-     ORDER BY (start_time IS NULL), start_time ASC, created_at DESC`,
-  ).all<Row>();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+const DUMMY_HASH = `pbkdf2$100000$${"0".repeat(32)}$${"0".repeat(64)}`;
+
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "unknown";
+}
+
+async function getSessionUser(db: D1Database, request: Request): Promise<SessionUser | null> {
+  const sid = parseSessionCookie(request.headers.get("cookie"));
+  if (!sid) return null;
+  const row = await db
+    .prepare(
+      `SELECT u.id, u.email, s.expires_at FROM sessions s
+       JOIN users u ON u.id = s.user_id WHERE s.id = ?`,
+    )
+    .bind(sid)
+    .first<{ id: string; email: string; expires_at: string }>();
+  if (!row) return null;
+  if (isExpired(row.expires_at)) {
+    await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sid).run();
+    return null;
+  }
+  return { id: row.id, email: row.email };
+}
+
+async function startSession(db: D1Database, userId: string, email: string): Promise<Response> {
+  await db
+    .prepare("DELETE FROM sessions WHERE expires_at <= ?")
+    .bind(new Date().toISOString())
+    .run();
+  const sid = randomToken();
+  const expiresAt = sessionExpiry();
+  await db
+    .prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+    .bind(sid, userId, expiresAt, new Date().toISOString())
+    .run();
+  return json({ email }, 200, { "set-cookie": sessionCookie(sid, expiresAt) });
+}
+
+async function register(db: D1Database, request: Request): Promise<Response> {
+  if (!rateLimit(`register:${clientIp(request)}`, 5, RATE_WINDOW_MS)) {
+    return json({ error: "尝试过于频繁，请一小时后再试" }, 429);
+  }
+  const body = await readBody(request);
+  if (!body) return json({ error: "请求格式不正确" }, 400);
+  const email = str(body.email).trim().toLowerCase();
+  const password = str(body.password);
+  if (!EMAIL_RE.test(email) || email.length > 254) {
+    return json({ error: "邮箱格式不正确" }, 400);
+  }
+  if (password.length < 8 || password.length > 128) {
+    return json({ error: "密码长度需在 8-128 位之间" }, 400);
+  }
+  const existing = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+  if (existing) return json({ error: "该邮箱已注册" }, 409);
+  const id = crypto.randomUUID();
+  await db
+    .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)")
+    .bind(id, email, await hashPassword(password), new Date().toISOString())
+    .run();
+  return startSession(db, id, email);
+}
+
+async function login(db: D1Database, request: Request): Promise<Response> {
+  if (!rateLimit(`login:${clientIp(request)}`, 10, RATE_WINDOW_MS)) {
+    return json({ error: "尝试过于频繁，请一小时后再试" }, 429);
+  }
+  const body = await readBody(request);
+  if (!body) return json({ error: "请求格式不正确" }, 400);
+  const email = str(body.email).trim().toLowerCase();
+  const password = str(body.password);
+  const row = await db
+    .prepare("SELECT id, password_hash FROM users WHERE email = ?")
+    .bind(email)
+    .first<{ id: string; password_hash: string }>();
+  if (!row) {
+    await verifyPassword(password, DUMMY_HASH);
+    return json({ error: "邮箱或密码不正确" }, 401);
+  }
+  if (!(await verifyPassword(password, row.password_hash))) {
+    return json({ error: "邮箱或密码不正确" }, 401);
+  }
+  return startSession(db, row.id, email);
+}
+
+async function logout(db: D1Database, request: Request): Promise<Response> {
+  const sid = parseSessionCookie(request.headers.get("cookie"));
+  if (sid) {
+    await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sid).run();
+  }
+  return json({ ok: true }, 200, { "set-cookie": clearedSessionCookie() });
+}
+
+async function listInterviews(db: D1Database, userId: string): Promise<Response> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM interviews WHERE user_id = ?
+       ORDER BY (start_time IS NULL), start_time ASC, created_at DESC`,
+    )
+    .bind(userId)
+    .all<Row>();
   return json(results.map(rowToInterview));
 }
 
-async function getInterview(env: Env, id: string): Promise<Response> {
-  const row = await env.DB.prepare("SELECT * FROM interviews WHERE id = ?").bind(id).first<Row>();
+async function getInterview(db: D1Database, userId: string, id: string): Promise<Response> {
+  const row = await db
+    .prepare("SELECT * FROM interviews WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first<Row>();
   if (!row) return json({ error: "not found" }, 404);
   return json(rowToInterview(row));
 }
 
-async function createInterview(env: Env, request: Request): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+async function createInterview(
+  db: D1Database,
+  userId: string,
+  request: Request,
+): Promise<Response> {
+  const body = await readBody(request);
+  if (!body) return json({ error: "请求格式不正确" }, 400);
   const input = normalizeInput(body);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO interviews
-      (id, company, position, round, start_time, end_time, platform, meeting_url,
-       meeting_id, password, interviewers, organizer, status, notes, raw_text, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
+  await db
+    .prepare(
+      `INSERT INTO interviews
+        (id, user_id, company, position, round, start_time, end_time, platform, meeting_url,
+         meeting_id, password, interviewers, organizer, status, notes, raw_text, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
     .bind(
       id,
+      userId,
       input.company,
       input.position,
       input.round,
@@ -183,23 +268,36 @@ async function createInterview(env: Env, request: Request): Promise<Response> {
       now,
     )
     .run();
-  const row = await env.DB.prepare("SELECT * FROM interviews WHERE id = ?").bind(id).first<Row>();
+  const row = await db
+    .prepare("SELECT * FROM interviews WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first<Row>();
   return json(row ? rowToInterview(row) : { error: "not found" }, 201);
 }
 
-async function updateInterview(env: Env, id: string, request: Request): Promise<Response> {
-  const existing = await env.DB.prepare("SELECT * FROM interviews WHERE id = ?").bind(id).first<Row>();
+async function updateInterview(
+  db: D1Database,
+  userId: string,
+  id: string,
+  request: Request,
+): Promise<Response> {
+  const existing = await db
+    .prepare("SELECT id FROM interviews WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first();
   if (!existing) return json({ error: "not found" }, 404);
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await readBody(request);
+  if (!body) return json({ error: "请求格式不正确" }, 400);
   const input = normalizeInput(body);
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    `UPDATE interviews SET
-      company = ?, position = ?, round = ?, start_time = ?, end_time = ?, platform = ?,
-      meeting_url = ?, meeting_id = ?, password = ?, interviewers = ?, organizer = ?, status = ?,
-      notes = ?, raw_text = ?, updated_at = ?
-     WHERE id = ?`,
-  )
+  await db
+    .prepare(
+      `UPDATE interviews SET
+        company = ?, position = ?, round = ?, start_time = ?, end_time = ?, platform = ?,
+        meeting_url = ?, meeting_id = ?, password = ?, interviewers = ?, organizer = ?, status = ?,
+        notes = ?, raw_text = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+    )
     .bind(
       input.company,
       input.position,
@@ -217,14 +315,25 @@ async function updateInterview(env: Env, id: string, request: Request): Promise<
       input.rawText,
       now,
       id,
+      userId,
     )
     .run();
-  const row = await env.DB.prepare("SELECT * FROM interviews WHERE id = ?").bind(id).first<Row>();
+  const row = await db
+    .prepare("SELECT * FROM interviews WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first<Row>();
   return json(row ? rowToInterview(row) : { error: "not found" });
 }
 
-async function deleteInterview(env: Env, id: string): Promise<Response> {
-  await env.DB.prepare("DELETE FROM interviews WHERE id = ?").bind(id).run();
+async function deleteInterview(
+  db: D1Database,
+  userId: string,
+  id: string,
+): Promise<Response> {
+  await db
+    .prepare("DELETE FROM interviews WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .run();
   return json({ ok: true });
 }
 
@@ -237,20 +346,42 @@ export default {
       return new Response("Not Found", { status: 404 });
     }
 
-    await ensureSchema(env.DB);
+    if (path === "/api/register") {
+      if (request.method === "POST") return register(env.DB, request);
+      return json({ error: "method not allowed" }, 405);
+    }
+
+    if (path === "/api/login") {
+      if (request.method === "POST") return login(env.DB, request);
+      return json({ error: "method not allowed" }, 405);
+    }
+
+    const user = await getSessionUser(env.DB, request);
+
+    if (path === "/api/me") {
+      if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+      return user ? json({ email: user.email }) : json({ error: "unauthorized" }, 401);
+    }
+
+    if (path === "/api/logout") {
+      if (request.method === "POST") return logout(env.DB, request);
+      return json({ error: "method not allowed" }, 405);
+    }
+
+    if (!user) return json({ error: "unauthorized" }, 401);
 
     if (path === "/api/interviews") {
-      if (request.method === "GET") return listInterviews(env);
-      if (request.method === "POST") return createInterview(env, request);
+      if (request.method === "GET") return listInterviews(env.DB, user.id);
+      if (request.method === "POST") return createInterview(env.DB, user.id, request);
       return json({ error: "method not allowed" }, 405);
     }
 
     const match = path.match(/^\/api\/interviews\/([^/]+)$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
-      if (request.method === "GET") return getInterview(env, id);
-      if (request.method === "PUT") return updateInterview(env, id, request);
-      if (request.method === "DELETE") return deleteInterview(env, id);
+      if (request.method === "GET") return getInterview(env.DB, user.id, id);
+      if (request.method === "PUT") return updateInterview(env.DB, user.id, id, request);
+      if (request.method === "DELETE") return deleteInterview(env.DB, user.id, id);
       return json({ error: "method not allowed" }, 405);
     }
 

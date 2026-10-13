@@ -13,6 +13,8 @@ import { ListView } from "./views/ListView";
 import { CalendarView } from "./views/CalendarView";
 import { KanbanView } from "./views/KanbanView";
 import { TimelineView } from "./views/TimelineView";
+import { LoginPage } from "./components/LoginPage";
+import type { Me } from "./api";
 import type { ViewProps } from "./viewProps";
 import { dateKey, todayKey } from "./format";
 
@@ -53,6 +55,8 @@ export function App() {
   const [editing, setEditing] = useState<Interview | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [exportText, setExportText] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   async function load() {
     try {
@@ -67,8 +71,28 @@ export function App() {
   }
 
   useEffect(() => {
-    void load();
+    void api
+      .me()
+      .then(setMe)
+      .catch(() => setMe(null))
+      .finally(() => setAuthChecked(true));
   }, []);
+
+  async function handleAuthed(user: Me) {
+    setMe(user);
+    await load();
+  }
+
+  async function handleLogout() {
+    try {
+      await api.logout();
+    } finally {
+      setMe(null);
+      setInterviews([]);
+      setError(null);
+      setTab("list");
+    }
+  }
 
   function openCreate() {
     setEditing(null);
@@ -140,63 +164,76 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div>
-          <h1>面试管理</h1>
-          <p className="muted small-text">
-            共 {stats.total} 场 · 待面试 {stats.upcoming} 场
-            {Object.entries(stats.byStatus)
-              .filter(([s]) => s !== "scheduled")
-              .map(([s, n]) => ` · ${STATUS_LABELS[s as InterviewStatus]} ${n}`)
-              .join("")}
-          </p>
-        </div>
-        <div className="header-actions">
-          <button className="btn" onClick={() => void load()}>
-            刷新
-          </button>
-          <button className="btn" onClick={() => setExportText(buildMonthSchedule(interviews))}>
-            导出本月日程
-          </button>
-          <button className="btn primary" onClick={openCreate}>
-            + 新建面试
-          </button>
-        </div>
-      </header>
+      {!authChecked ? (
+        <p className="empty">加载中…</p>
+      ) : !me ? (
+        <LoginPage onAuthed={(user) => void handleAuthed(user)} />
+      ) : (
+        <>
+          <header className="app-header">
+            <div>
+              <h1>面试管理</h1>
+              <p className="muted small-text">
+                共 {stats.total} 场 · 待面试 {stats.upcoming} 场
+                {Object.entries(stats.byStatus)
+                  .filter(([s]) => s !== "scheduled")
+                  .map(([s, n]) => ` · ${STATUS_LABELS[s as InterviewStatus]} ${n}`)
+                  .join("")}
+                {" · "}
+                {me.email}
+              </p>
+            </div>
+            <div className="header-actions">
+              <button className="btn" onClick={() => void load()}>
+                刷新
+              </button>
+              <button className="btn" onClick={() => setExportText(buildMonthSchedule(interviews))}>
+                导出本月日程
+              </button>
+              <button className="btn" onClick={() => void handleLogout()}>
+                退出
+              </button>
+              <button className="btn primary" onClick={openCreate}>
+                + 新建面试
+              </button>
+            </div>
+          </header>
 
-      <nav className="tabs">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            className={`tab${tab === t.key ? " active" : ""}`}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+          <nav className="tabs">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                className={`tab${tab === t.key ? " active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
 
-      {error && (
-        <div className="error-bar">
-          <span>{error}</span>
-          <button className="btn small" onClick={() => setError(null)}>
-            关闭
-          </button>
-        </div>
+          {error && (
+            <div className="error-bar">
+              <span>{error}</span>
+              <button className="btn small" onClick={() => setError(null)}>
+                关闭
+              </button>
+            </div>
+          )}
+
+          <main className="app-main">
+            {loading ? (
+              <p className="empty">加载中…</p>
+            ) : (
+              <>
+                {tab === "list" && <ListView {...viewProps} />}
+                {tab === "calendar" && <CalendarView {...viewProps} />}
+                {tab === "kanban" && <KanbanView {...viewProps} />}
+                {tab === "timeline" && <TimelineView {...viewProps} />}
+              </>
+            )}
+          </main>
+        </>
       )}
-
-      <main className="app-main">
-        {loading ? (
-          <p className="empty">加载中…</p>
-        ) : (
-          <>
-            {tab === "list" && <ListView {...viewProps} />}
-            {tab === "calendar" && <CalendarView {...viewProps} />}
-            {tab === "kanban" && <KanbanView {...viewProps} />}
-            {tab === "timeline" && <TimelineView {...viewProps} />}
-          </>
-        )}
-      </main>
 
       {showForm && (
         <div

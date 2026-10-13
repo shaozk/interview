@@ -6,6 +6,8 @@
   "assets": {
     "not_found_handling": "single-page-application"
   },
+  // 大陆访问 *.workers.dev 可能被 DNS 污染，建议绑定自有域名：
+  // "routes": [{ "pattern": "interview.example.com", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",

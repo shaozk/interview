@@ -27,10 +27,10 @@
 
 ### 四种视图
 
-- **列表**：搜索（公司/职位/面试官）+ 状态筛选
+- **列表**：搜索（公司/职位/面试官）+ 状态筛选 + 时间正序/倒序
 - **日历**：月视图，今日高亮，点击日程直接编辑
 - **看板**：按状态分列，可直接改状态
-- **轮次时间线**：按公司聚合各轮面试的推进过程
+- **轮次时间线**：按公司聚合各轮面试的推进过程，时间正序/倒序可切换
 
 ### 状态流转
 
@@ -51,8 +51,18 @@
 
 - **前端**：React + TypeScript + Vite
 - **后端**：Cloudflare Workers（单 Worker 同时托管静态资源与 API）
-- **存储**：Cloudflare D1（SQLite），首次请求自动建表与迁移
-- **测试**：Vitest（解析器与导出逻辑均有单测）
+- **存储**：Cloudflare D1（SQLite），`migrations/` 目录管理 schema
+- **鉴权**：邮箱注册/登录，PBKDF2-SHA256（WebCrypto）存密码，D1 session + HttpOnly cookie，零运行时依赖
+- **测试**：Vitest（解析器、导出与鉴权逻辑均有单测）
+
+## 隐私与数据归属
+
+- **数据只落在你自己的 Cloudflare 账号里**：日程、会议号、密码、粘贴的邀请原文（`raw_text`）全部存在你自己的 D1 中，本项目没有、也不会上报任何第三方服务；解析全程是本地规则计算。
+- **所有接口要求登录**：`/api/interviews*` 没有 session 一律 401，每条数据按账号（`user_id`）隔离，互相不可见。
+- **密码不以明文存储**：PBKDF2-SHA256 加盐哈希（10 万次迭代），登录失败不区分「邮箱不存在」和「密码错误」。
+- **会话**：cookie 为 `HttpOnly + Secure + SameSite=Lax`，服务端 30 天过期，登出即删。
+- **注册/登录有每 IP 限流**（注册 5 次/小时、登录 10 次/小时），限流计数存在内存里，Worker 重启即清零——挡脚本够用，不是安全边界。
+- **但也要说清楚**：谁跑这个实例，谁就握着那个数据库，D1 是可以直接查的。所以别用别人的实例——自己部署一份，十五分钟，步骤在下面。
 
 ## 本地开发
 
@@ -60,7 +70,8 @@
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173，本地 D1 自动可用
+npm run migrate:local   # 首次运行前建本地表
+npm run dev             # http://localhost:5173，本地 D1 自动可用
 ```
 
 其他命令：
@@ -72,25 +83,52 @@ npm run build      # typecheck + 构建
 npm run preview    # 构建后本地预览
 ```
 
-## 部署到 Cloudflare
+## 自己部署到 Cloudflare（约 15 分钟）
+
+前置条件：一个 Cloudflare 账号和 Node.js ≥ 22。
+
+### 1. 安装并登录
 
 ```bash
+npm install
 npx wrangler login
-npx wrangler d1 create interview-db
-# 把返回的 database_id 填入 wrangler.jsonc，然后：
-npm run deploy
 ```
 
-数据落在你自己的 Cloudflare 账号里；解析全程为本地规则计算，不依赖、不上传任何第三方服务。
+### 2. 建 D1 数据库
+
+```bash
+npx wrangler d1 create interview-db
+```
+
+把返回的 `database_id` 填进 `wrangler.jsonc`。
+
+### 3. 绑定自有域名（建议）
+
+`*.workers.dev` 在中国大陆可能被 DNS 污染。有自己的域名就把 `wrangler.jsonc` 里的 `routes` 注释解开、填上你的域名（`custom_domain: true`）；没有的话，先用 `xxx.workers.dev` 也能跑，只是大陆可能无法直连。
+
+### 4. 建表并部署
+
+```bash
+npm run deploy    # 先构建，再对远端 D1 apply migration，最后发布 Worker
+```
+
+部署完会给你一个 `https://interview.<你的子域>.workers.dev`（或你绑定的域名）。
+
+### 5. 注册第一个账号
+
+打开部署地址，切换到「注册」，用邮箱和密码注册即可。注册是开放的，但每条数据按账号隔离，别人注册也看不到你的任何东西；不希望陌生人注册的话，定期 `npx wrangler d1 execute interview-db --remote --command "SELECT email FROM users"` 看一眼即可。
+
+**更新部署一律走 `npm run deploy`**——「先 migration 再发布」这个顺序是 schema 和代码不脱节的全部保证。
 
 ## 目录结构
 
 ```
+migrations/      # D1 schema 迁移（wrangler d1 migrations apply 管理）
 src/
   shared/        # 领域类型 + 会议文本解析器（纯函数，前后端共用）
-  worker/        # Cloudflare Worker：/api/interviews CRUD + D1
-  client/        # React 应用：视图、表单、导出
-tests/           # 解析器 / 导出 单测
+  worker/        # Cloudflare Worker：鉴权 + /api/interviews CRUD + D1
+  client/        # React 应用：登录、视图、表单、导出
+tests/           # 解析器 / 导出 / 鉴权 单测
 ```
 
 ## Roadmap
@@ -98,6 +136,7 @@ tests/           # 解析器 / 导出 单测
 - [ ] 导出 / 导入 ICS 日历
 - [ ] 面试前提醒
 - [ ] 多时区支持（当前固定按北京时间）
+- [ ] 注册接 Cloudflare Turnstile 人机验证（现在只有每 IP 限流）
 
 ## 致谢
 
