@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" width="200" alt="面面 logo"></p>
+
 # 面面 · 面试日程集中管理
 
 「面面」（英文名 interview）——把散落在飞书、腾讯会议、Zoom、Teams、邮件里的面试邀请，粘贴进来即可集中管理。
