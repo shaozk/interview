@@ -6,6 +6,14 @@ export interface Me {
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -14,7 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
+    throw new ApiError(res.status, `${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
   }
   return (await res.json()) as T;
 }
@@ -23,7 +31,7 @@ export const api = {
   me: async (): Promise<Me | null> => {
     const res = await fetch(`${BASE}/api/me`, { credentials: "include" });
     if (res.status === 401) return null;
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText}`);
     return (await res.json()) as Me;
   },
   register: (email: string, password: string) =>

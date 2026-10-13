@@ -14,7 +14,7 @@ import { CalendarView } from "./views/CalendarView";
 import { KanbanView } from "./views/KanbanView";
 import { TimelineView } from "./views/TimelineView";
 import { LoginPage } from "./components/LoginPage";
-import type { Me } from "./api";
+import { ApiError, type Me } from "./api";
 import type { ViewProps } from "./viewProps";
 import { dateKey, todayKey } from "./format";
 
@@ -64,10 +64,24 @@ export function App() {
       setInterviews(await api.list());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      handleApiError(e);
     } finally {
       setLoading(false);
     }
+  }
+
+  // 401 = 会话已失效：清空本地状态回到登录页，而不是在主页显示错误
+  function handleApiError(e: unknown): boolean {
+    if (e instanceof ApiError && e.status === 401) {
+      setMe(null);
+      setInterviews([]);
+      setError(null);
+      setShowForm(false);
+      setEditing(null);
+      return true;
+    }
+    setError(e instanceof Error ? e.message : String(e));
+    return false;
   }
 
   useEffect(() => {
@@ -120,7 +134,7 @@ export function App() {
       setShowForm(false);
       setEditing(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      handleApiError(e);
     } finally {
       setSubmitting(false);
     }
@@ -132,7 +146,7 @@ export function App() {
       await api.remove(interview.id);
       setInterviews((prev) => prev.filter((i) => i.id !== interview.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      handleApiError(e);
     }
   }
 
@@ -143,8 +157,7 @@ export function App() {
     try {
       await api.update(interview.id, next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      void load();
+      if (!handleApiError(e)) void load();
     }
   }
 
