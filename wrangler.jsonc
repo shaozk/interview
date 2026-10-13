@@ -9,7 +9,7 @@
   // 前端托管到 GitHub Pages 时的跨站 Origin 白名单（逗号分隔），替换成你的 Pages 地址；
   // 不用 Pages 托管前端可删除：
   "vars": {
-    "CORS_ORIGINS": "https://<你的GitHub用户名>.github.io"
+    "CORS_ORIGINS": "https://shaozk.xyz/interview"
   },
   // 大陆访问 *.workers.dev 可能被 DNS 污染，建议绑定自有域名：
   // "routes": [{ "pattern": "interview.example.com", "custom_domain": true }],
