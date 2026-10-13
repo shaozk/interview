@@ -73,7 +73,10 @@ export function App() {
   useEffect(() => {
     void api
       .me()
-      .then(setMe)
+      .then((user) => {
+        setMe(user);
+        if (user) void load();
+      })
       .catch(() => setMe(null))
       .finally(() => setAuthChecked(true));
   }, []);
