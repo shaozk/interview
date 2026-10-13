@@ -1,7 +1,7 @@
 {
   "name": "interview",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "面面：面试日程集中管理。纯规则解析、零 AI 依赖，部署到你自己的 Cloudflare。",
   "type": "module",
   "scripts": {
