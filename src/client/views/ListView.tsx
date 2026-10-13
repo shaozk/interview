@@ -1,23 +1,29 @@
 import { useMemo, useState } from "react";
 import { STATUS_LABELS, STATUS_ORDER, type InterviewStatus } from "../../shared/types";
 import { InterviewCard } from "../components/InterviewCard";
+import { TimeOrderToggle } from "../components/TimeOrderToggle";
+import { timeOrderComparator, type TimeOrder } from "../sort";
 import type { ViewProps } from "../viewProps";
 
 export function ListView({ interviews, onEdit, onDelete, onStatusChange }: ViewProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<InterviewStatus | "all">("all");
+  const [order, setOrder] = useState<TimeOrder>("desc");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return interviews.filter((i) => {
-      if (status !== "all" && i.status !== status) return false;
-      if (!q) return true;
-      return [i.company, i.position, i.round, i.interviewers, i.notes]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    });
-  }, [interviews, query, status]);
+    const byTime = timeOrderComparator(order);
+    return interviews
+      .filter((i) => {
+        if (status !== "all" && i.status !== status) return false;
+        if (!q) return true;
+        return [i.company, i.position, i.round, i.interviewers, i.notes]
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+      })
+      .sort((a, b) => byTime(a.startTime, b.startTime));
+  }, [interviews, query, status, order]);
 
   return (
     <div className="list-view">
@@ -39,6 +45,7 @@ export function ListView({ interviews, onEdit, onDelete, onStatusChange }: ViewP
             </option>
           ))}
         </select>
+        <TimeOrderToggle order={order} onChange={setOrder} />
       </div>
 
       {filtered.length === 0 ? (

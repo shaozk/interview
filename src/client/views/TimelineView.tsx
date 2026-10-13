@@ -1,10 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { STATUS_LABELS, type Interview } from "../../shared/types";
+import { TimeOrderToggle } from "../components/TimeOrderToggle";
 import { formatDate, formatTimeRange } from "../format";
+import { timeOrderComparator, type TimeOrder } from "../sort";
 import type { ViewProps } from "../viewProps";
 
 export function TimelineView({ interviews, onEdit }: ViewProps) {
+  const [order, setOrder] = useState<TimeOrder>("desc");
+
   const groups = useMemo(() => {
+    const byTime = timeOrderComparator(order);
     const map = new Map<string, Interview[]>();
     for (const i of interviews) {
       const key = i.company || "未识别公司";
@@ -15,19 +20,20 @@ export function TimelineView({ interviews, onEdit }: ViewProps) {
     return [...map.entries()]
       .map(([company, items]) => ({
         company,
-        items: [...items].sort((a, b) =>
-          (a.startTime ?? "~").localeCompare(b.startTime ?? "~"),
-        ),
+        items: [...items].sort((a, b) => byTime(a.startTime, b.startTime)),
       }))
       .sort((a, b) =>
-        (a.items[0]?.startTime ?? "~").localeCompare(b.items[0]?.startTime ?? "~"),
+        byTime(a.items[0]?.startTime ?? null, b.items[0]?.startTime ?? null),
       );
-  }, [interviews]);
+  }, [interviews, order]);
 
   if (groups.length === 0) return <p className="empty">还没有面试记录</p>;
 
   return (
     <div className="timeline">
+      <div className="timeline-toolbar">
+        <TimeOrderToggle order={order} onChange={setOrder} />
+      </div>
       {groups.map((group) => (
         <section key={group.company} className="timeline-group">
           <h2>{group.company}</h2>
