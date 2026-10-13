@@ -98,10 +98,12 @@ export function parseSessionCookie(header: string | null): string | null {
   return null;
 }
 
-export function sessionCookie(id: string, expiresAt: string): string {
-  return `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expiresAt}`;
+export function sessionCookie(id: string, expiresAt: string, crossSite = false): string {
+  const sameSite = crossSite ? "None" : "Lax";
+  return `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; Secure; SameSite=${sameSite}; Expires=${expiresAt}`;
 }
 
-export function clearedSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function clearedSessionCookie(crossSite = false): string {
+  const sameSite = crossSite ? "None" : "Lax";
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=${sameSite}; Max-Age=0`;
 }

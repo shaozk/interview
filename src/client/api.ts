@@ -4,9 +4,12 @@ export interface Me {
   email: string;
 }
 
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(`${BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
@@ -18,7 +21,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: async (): Promise<Me | null> => {
-    const res = await fetch("/api/me");
+    const res = await fetch(`${BASE}/api/me`, { credentials: "include" });
     if (res.status === 401) return null;
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return (await res.json()) as Me;

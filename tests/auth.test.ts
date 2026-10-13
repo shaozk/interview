@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearedSessionCookie,
   hashPassword,
   isExpired,
   parseSessionCookie,
@@ -74,5 +75,12 @@ describe("sessions", () => {
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("Secure");
     expect(cookie).toContain("SameSite=Lax");
+  });
+
+  it("session cookie switches to SameSite=None for cross-site clients", () => {
+    const cookie = sessionCookie("tok", "2026-11-13T00:00:00.000Z", true);
+    expect(cookie).toContain("SameSite=None");
+    expect(cookie).toContain("Secure");
+    expect(clearedSessionCookie(true)).toContain("SameSite=None");
   });
 });

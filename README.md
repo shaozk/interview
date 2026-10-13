@@ -120,6 +120,17 @@ npm run deploy    # 先构建，再对远端 D1 apply migration，最后发布 W
 
 **更新部署一律走 `npm run deploy`**——「先 migration 再发布」这个顺序是 schema 和代码不脱节的全部保证。
 
+### 6. （可选）前端托管到 GitHub Pages
+
+不想依赖 `*.workers.dev` 域名的话，可以把前端静态托管到 GitHub Pages，Worker 只当 API 用：
+
+1. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**
+2. **Settings → Secrets and variables → Actions → Variables** 标签新建变量 `VITE_API_BASE_URL`，值为你的 Worker 地址（如 `https://interview.<你的子域>.workers.dev`）
+3. 把 Pages 地址（如 `https://<你的GitHub用户名>.github.io`）填进 `wrangler.jsonc` 的 `vars.CORS_ORIGINS`，重新 `npm run deploy`
+4. push 到 `main`（或在 Actions 里手动触发 Deploy Pages）即可，之后每次 push 自动更新
+
+注意：Pages 前端访问 Worker 是跨站请求，session cookie 会以 `SameSite=None` 下发；Chrome 需允许第三方 cookie，**Safari 默认阻止第三方 cookie，此模式下无法登录**。只自己用的话，更推荐直接用 Worker 托管前端。
+
 ## 目录结构
 
 ```

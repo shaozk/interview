@@ -14,6 +14,7 @@ import { rateLimit } from "./ratelimit";
 
 interface Env {
   DB: D1Database;
+  CORS_ORIGINS?: string;
 }
 
 interface Row {
@@ -124,6 +125,24 @@ function clientIp(request: Request): string {
   return request.headers.get("cf-connecting-ip") ?? "unknown";
 }
 
+function corsOrigin(request: Request, env: Env): string | null {
+  const allowed = (env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const origin = request.headers.get("origin");
+  return origin && allowed.includes(origin) ? origin : null;
+}
+
+function applyCors(response: Response, origin: string | null): Response {
+  if (!origin) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("access-control-allow-credentials", "true");
+  headers.append("vary", "Origin");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 async function getSessionUser(db: D1Database, request: Request): Promise<SessionUser | null> {
   const sid = parseSessionCookie(request.headers.get("cookie"));
   if (!sid) return null;
@@ -142,7 +161,12 @@ async function getSessionUser(db: D1Database, request: Request): Promise<Session
   return { id: row.id, email: row.email };
 }
 
-async function startSession(db: D1Database, userId: string, email: string): Promise<Response> {
+async function startSession(
+  db: D1Database,
+  userId: string,
+  email: string,
+  crossSite: boolean,
+): Promise<Response> {
   await db
     .prepare("DELETE FROM sessions WHERE expires_at <= ?")
     .bind(new Date().toISOString())
@@ -153,10 +177,10 @@ async function startSession(db: D1Database, userId: string, email: string): Prom
     .prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
     .bind(sid, userId, expiresAt, new Date().toISOString())
     .run();
-  return json({ email }, 200, { "set-cookie": sessionCookie(sid, expiresAt) });
+  return json({ email }, 200, { "set-cookie": sessionCookie(sid, expiresAt, crossSite) });
 }
 
-async function register(db: D1Database, request: Request): Promise<Response> {
+async function register(db: D1Database, request: Request, crossSite: boolean): Promise<Response> {
   if (!rateLimit(`register:${clientIp(request)}`, 5, RATE_WINDOW_MS)) {
     return json({ error: "尝试过于频繁，请一小时后再试" }, 429);
   }
@@ -177,10 +201,10 @@ async function register(db: D1Database, request: Request): Promise<Response> {
     .prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)")
     .bind(id, email, await hashPassword(password), new Date().toISOString())
     .run();
-  return startSession(db, id, email);
+  return startSession(db, id, email, crossSite);
 }
 
-async function login(db: D1Database, request: Request): Promise<Response> {
+async function login(db: D1Database, request: Request, crossSite: boolean): Promise<Response> {
   if (!rateLimit(`login:${clientIp(request)}`, 10, RATE_WINDOW_MS)) {
     return json({ error: "尝试过于频繁，请一小时后再试" }, 429);
   }
@@ -199,15 +223,15 @@ async function login(db: D1Database, request: Request): Promise<Response> {
   if (!(await verifyPassword(password, row.password_hash))) {
     return json({ error: "邮箱或密码不正确" }, 401);
   }
-  return startSession(db, row.id, email);
+  return startSession(db, row.id, email, crossSite);
 }
 
-async function logout(db: D1Database, request: Request): Promise<Response> {
+async function logout(db: D1Database, request: Request, crossSite: boolean): Promise<Response> {
   const sid = parseSessionCookie(request.headers.get("cookie"));
   if (sid) {
     await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sid).run();
   }
-  return json({ ok: true }, 200, { "set-cookie": clearedSessionCookie() });
+  return json({ ok: true }, 200, { "set-cookie": clearedSessionCookie(crossSite) });
 }
 
 async function listInterviews(db: D1Database, userId: string): Promise<Response> {
@@ -337,54 +361,76 @@ async function deleteInterview(
   return json({ ok: true });
 }
 
+async function handleApi(request: Request, env: Env, crossSite: boolean): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  if (!path.startsWith("/api/")) {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  if (path === "/api/register") {
+    if (request.method === "POST") return register(env.DB, request, crossSite);
+    return json({ error: "method not allowed" }, 405);
+  }
+
+  if (path === "/api/login") {
+    if (request.method === "POST") return login(env.DB, request, crossSite);
+    return json({ error: "method not allowed" }, 405);
+  }
+
+  const user = await getSessionUser(env.DB, request);
+
+  if (path === "/api/me") {
+    if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+    return user ? json({ email: user.email }) : json({ error: "unauthorized" }, 401);
+  }
+
+  if (path === "/api/logout") {
+    if (request.method === "POST") return logout(env.DB, request, crossSite);
+    return json({ error: "method not allowed" }, 405);
+  }
+
+  if (!user) return json({ error: "unauthorized" }, 401);
+
+  if (path === "/api/interviews") {
+    if (request.method === "GET") return listInterviews(env.DB, user.id);
+    if (request.method === "POST") return createInterview(env.DB, user.id, request);
+    return json({ error: "method not allowed" }, 405);
+  }
+
+  const match = path.match(/^\/api\/interviews\/([^/]+)$/);
+  if (match) {
+    const id = decodeURIComponent(match[1]);
+    if (request.method === "GET") return getInterview(env.DB, user.id, id);
+    if (request.method === "PUT") return updateInterview(env.DB, user.id, id, request);
+    if (request.method === "DELETE") return deleteInterview(env.DB, user.id, id);
+    return json({ error: "method not allowed" }, 405);
+  }
+
+  return json({ error: "not found" }, 404);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    const origin = corsOrigin(request, env);
 
-    if (!path.startsWith("/api/")) {
-      return new Response("Not Found", { status: 404 });
+    if (origin && request.method === "OPTIONS") {
+      return applyCors(
+        new Response(null, {
+          status: 204,
+          headers: {
+            "access-control-allow-methods": "GET, POST, PUT, DELETE",
+            "access-control-allow-headers": "content-type",
+            "access-control-max-age": "86400",
+          },
+        }),
+        origin,
+      );
     }
 
-    if (path === "/api/register") {
-      if (request.method === "POST") return register(env.DB, request);
-      return json({ error: "method not allowed" }, 405);
-    }
-
-    if (path === "/api/login") {
-      if (request.method === "POST") return login(env.DB, request);
-      return json({ error: "method not allowed" }, 405);
-    }
-
-    const user = await getSessionUser(env.DB, request);
-
-    if (path === "/api/me") {
-      if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
-      return user ? json({ email: user.email }) : json({ error: "unauthorized" }, 401);
-    }
-
-    if (path === "/api/logout") {
-      if (request.method === "POST") return logout(env.DB, request);
-      return json({ error: "method not allowed" }, 405);
-    }
-
-    if (!user) return json({ error: "unauthorized" }, 401);
-
-    if (path === "/api/interviews") {
-      if (request.method === "GET") return listInterviews(env.DB, user.id);
-      if (request.method === "POST") return createInterview(env.DB, user.id, request);
-      return json({ error: "method not allowed" }, 405);
-    }
-
-    const match = path.match(/^\/api\/interviews\/([^/]+)$/);
-    if (match) {
-      const id = decodeURIComponent(match[1]);
-      if (request.method === "GET") return getInterview(env.DB, user.id, id);
-      if (request.method === "PUT") return updateInterview(env.DB, user.id, id, request);
-      if (request.method === "DELETE") return deleteInterview(env.DB, user.id, id);
-      return json({ error: "method not allowed" }, 405);
-    }
-
-    return json({ error: "not found" }, 404);
+    const crossSite = origin !== null;
+    const response = await handleApi(request, env, crossSite);
+    return applyCors(response, origin);
   },
 } satisfies ExportedHandler<Env>;
