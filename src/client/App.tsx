@@ -14,6 +14,7 @@ import { CalendarView } from "./views/CalendarView";
 import { KanbanView } from "./views/KanbanView";
 import { TimelineView } from "./views/TimelineView";
 import { LoginPage } from "./components/LoginPage";
+import { GitHubLink } from "./components/GitHubLink";
 import { ApiError, type Me } from "./api";
 import type { ViewProps } from "./viewProps";
 import { dateKey, todayKey } from "./format";
@@ -206,6 +207,7 @@ export function App() {
               <button className="btn" onClick={() => setExportText(buildMonthSchedule(interviews))}>
                 导出本月日程
               </button>
+              <GitHubLink />
               <button className="btn" onClick={() => void handleLogout()}>
                 退出
               </button>

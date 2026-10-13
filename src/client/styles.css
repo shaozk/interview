@@ -565,6 +565,23 @@ textarea {
   margin: 0;
 }
 
+.auth-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  transition: color 0.15s ease;
+}
+
+.github-link:hover {
+  color: var(--text);
+}
+
 /* form / modal */
 .modal-overlay {
   position: fixed;

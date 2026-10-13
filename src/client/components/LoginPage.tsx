@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, type Me } from "../api";
+import { GitHubLink } from "./GitHubLink";
 
 interface Props {
   onAuthed: (me: Me) => void;
@@ -89,6 +90,9 @@ export function LoginPage({ onAuthed }: Props) {
           >
             {mode === "login" ? "没有账号？注册" : "已有账号？登录"}
           </button>
+        </div>
+        <div className="auth-footer">
+          <GitHubLink />
         </div>
       </form>
     </div>
