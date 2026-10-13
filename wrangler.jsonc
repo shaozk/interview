@@ -6,18 +6,16 @@
   "assets": {
     "not_found_handling": "single-page-application"
   },
-  // 前端托管到 GitHub Pages 时的跨站 Origin 白名单（逗号分隔），替换成你的 Pages 地址；
-  // 不用 Pages 托管前端可删除：
-  "vars": {
-    "CORS_ORIGINS": "https://shaozk.xyz/interview"
-  },
-  // 大陆访问 *.workers.dev 可能被 DNS 污染，建议绑定自有域名：
+  // 前端托管在 GitHub Pages（shaozk.xyz/interview/），API 通过同域 route 挂在
+  // shaozk.xyz/api/*：同源请求，无需 CORS，也绕开 *.workers.dev 大陆被污染的问题。
+  // 要求域名 DNS 托管在 Cloudflare；不用 Pages 托管前端可改回 custom_domain 形式：
   // "routes": [{ "pattern": "interview.example.com", "custom_domain": true }],
+  "routes": [{ "pattern": "shaozk.xyz/api/*", "zone_name": "shaozk.xyz" }],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "interview-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "7027cc32-f651-4ab1-9a3d-a89b9498be29"
     }
   ]
 }

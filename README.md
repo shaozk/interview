@@ -102,9 +102,15 @@ npx wrangler d1 create interview-db
 
 把返回的 `database_id` 填进 `wrangler.jsonc`。
 
-### 3. 绑定自有域名（建议）
+### 3. 域名与路由（建议）
 
-`*.workers.dev` 在中国大陆可能被 DNS 污染。有自己的域名就把 `wrangler.jsonc` 里的 `routes` 注释解开、填上你的域名（`custom_domain: true`）；没有的话，先用 `xxx.workers.dev` 也能跑，只是大陆可能无法直连。
+`*.workers.dev` 在中国大陆可能被 DNS 污染，无法直连。如果你的域名 DNS 托管在 Cloudflare，推荐把 API 挂到同域路由——`wrangler.jsonc` 里的 `routes` 默认就是这种形式：
+
+```jsonc
+"routes": [{ "pattern": "shaozk.xyz/api/*", "zone_name": "shaozk.xyz" }]
+```
+
+把 `shaozk.xyz` 换成你的域名。这样 `/api/*` 请求由 Worker 接管、与前端同源（无需 CORS、无第三方 cookie），其余路径照常回源，不影响同域的其他站点。没有 Cloudflare 托管的域名的话，可以先删掉 `routes`，用 `xxx.workers.dev` 跑着（大陆可能无法直连）。
 
 ### 4. 建表并部署
 
@@ -122,14 +128,13 @@ npm run deploy    # 先构建，再对远端 D1 apply migration，最后发布 W
 
 ### 6. （可选）前端托管到 GitHub Pages
 
-不想依赖 `*.workers.dev` 域名的话，可以把前端静态托管到 GitHub Pages，Worker 只当 API 用：
+前端静态托管到 GitHub Pages，Worker 只当 API 用（配合第 3 步的同域 route，前后端同源、所有浏览器都能登录）：
 
-1. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**
-2. **Settings → Secrets and variables → Actions → Variables** 标签新建变量 `VITE_API_BASE_URL`，值为你的 Worker 地址（如 `https://interview.<你的子域>.workers.dev`）
-3. 把 Pages 地址（如 `https://<你的GitHub用户名>.github.io`）填进 `wrangler.jsonc` 的 `vars.CORS_ORIGINS`，重新 `npm run deploy`
-4. push 到 `main`（或在 Actions 里手动触发 Deploy Pages）即可，之后每次 push 自动更新
+1. 按第 3 步把 `wrangler.jsonc` 的 `routes` 配成 `<你的域名>/api/*` 并 `npm run deploy`
+2. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**
+3. push 到 `main`（或在 Actions 里手动触发 Deploy Pages）即可，之后每次 push 自动更新
 
-注意：Pages 前端访问 Worker 是跨站请求，session cookie 会以 `SameSite=None` 下发；Chrome 需允许第三方 cookie，**Safari 默认阻止第三方 cookie，此模式下无法登录**。只自己用的话，更推荐直接用 Worker 托管前端。
+Pages 构建不设 `VITE_API_BASE_URL`，前端直接请求同域的 `/api/*`，由 Cloudflare route 转给 Worker——不要配跨站的 Worker 地址，`*.workers.dev` 在大陆连不通，跨站还会引入第三方 cookie 限制（Safari 无法登录）。
 
 ## 目录结构
 
