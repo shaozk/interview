@@ -37,9 +37,9 @@ export function LoginPage({ onAuthed }: Props) {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>面试管理</h1>
+        <h1>面面</h1>
         <p className="muted small-text">
-          {mode === "login" ? "登录后查看你的面试日程" : "注册一个账号，数据只属于你"}
+          面试日程集中管理 · {mode === "login" ? "登录后查看你的面试日程" : "注册一个账号，数据只属于你"}
         </p>
         <label className="field">
           <span>邮箱</span>

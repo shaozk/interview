@@ -189,7 +189,11 @@ export function App() {
         <>
           <header className="app-header">
             <div>
-              <h1>面试管理</h1>
+              <h1>面面</h1>
+              <p className="muted small-text">
+                面试日程集中管理：粘贴会议邀请自动解析，列表 / 日历 / 看板 /
+                时间线四种视图，数据只存在你自己的 Cloudflare。
+              </p>
               <p className="muted small-text">
                 共 {stats.total} 场 · 待面试 {stats.upcoming} 场
                 {Object.entries(stats.byStatus)
