@@ -81,7 +81,10 @@ npm test           # 运行单测
 npm run typecheck  # 前端 + Worker 双 tsconfig 类型检查
 npm run build      # typecheck + 构建
 npm run preview    # 构建后本地预览
+npm run smoke      # 对线上跑 API 冒烟（登录/CRUD/登出，目标取自 routes，SMOKE_BASE_URL 可覆盖）
 ```
+
+`npm run deploy` 自动带两道防线：`predeploy` 校验 `wrangler.jsonc`（database_id 占位符直接拒绝部署），`postdeploy` 部署完自动跑一遍冒烟。
 
 ## 自己部署到 Cloudflare（约 15 分钟）
 
