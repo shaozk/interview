@@ -559,6 +559,12 @@ textarea {
   margin: 0;
 }
 
+.auth-success {
+  color: #22c55e;
+  font-size: 13px;
+  margin: 0;
+}
+
 /* form / modal */
 .modal-overlay {
   position: fixed;

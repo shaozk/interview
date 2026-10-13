@@ -11,6 +11,7 @@ export function LoginPage({ onAuthed }: Props) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [succeeded, setSucceeded] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,6 +22,9 @@ export function LoginPage({ onAuthed }: Props) {
         mode === "login"
           ? await api.login(email.trim(), password)
           : await api.register(email.trim(), password);
+      setSucceeded(true);
+      // 停留片刻再切换视图：立即卸载表单会让浏览器密码管理器丢弃保存提示
+      await new Promise((resolve) => setTimeout(resolve, 500));
       onAuthed(me);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -43,7 +47,7 @@ export function LoginPage({ onAuthed }: Props) {
             id="email"
             name="email"
             required
-            autoComplete="username email"
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -62,9 +66,18 @@ export function LoginPage({ onAuthed }: Props) {
           />
         </label>
         {error && <p className="auth-error">{error}</p>}
+        {succeeded && (
+          <p className="auth-success">{mode === "login" ? "登录成功" : "注册成功"}，正在进入…</p>
+        )}
         <div className="form-actions">
           <button type="submit" className="btn primary" disabled={submitting}>
-            {submitting ? "提交中…" : mode === "login" ? "登录" : "注册"}
+            {succeeded
+              ? "成功"
+              : submitting
+                ? "提交中…"
+                : mode === "login"
+                  ? "登录"
+                  : "注册"}
           </button>
           <button
             type="button"
