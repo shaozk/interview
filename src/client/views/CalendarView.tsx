@@ -1,18 +1,30 @@
 import { useMemo, useState } from "react";
 import type { Interview } from "../../shared/types";
-import { WEEKDAYS, dateKey, tzParts } from "../format";
+import { WEEKDAYS, dateKey, todayKey, tzParts } from "../format";
 import type { ViewProps } from "../viewProps";
+
+type Granularity = "month" | "week" | "day";
+
+const MS_DAY = 86_400_000;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+function keyToUtc(key: string): Date {
+  const y = Number(key.slice(0, 4));
+  const m = Number(key.slice(5, 7));
+  const d = Number(key.slice(8, 10));
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+function utcToKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
 export function CalendarView({ interviews, onEdit }: ViewProps) {
-  const [anchor, setAnchor] = useState(() => {
-    const k = dateKey(new Date().toISOString());
-    const [y, m] = k.split("-").map(Number);
-    return { year: y, month: m };
-  });
+  const [granularity, setGranularity] = useState<Granularity>("month");
+  const [anchorKey, setAnchorKey] = useState(() => todayKey());
 
   const byDay = useMemo(() => {
     const map = new Map<string, Interview[]>();
@@ -29,76 +41,148 @@ export function CalendarView({ interviews, onEdit }: ViewProps) {
     return map;
   }, [interviews]);
 
-  const firstWeekday = new Date(Date.UTC(anchor.year, anchor.month - 1, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(anchor.year, anchor.month, 0)).getUTCDate();
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstWeekday; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const today = todayKey();
+  const anchorDate = keyToUtc(anchorKey);
+  const ay = Number(anchorKey.slice(0, 4));
+  const am = Number(anchorKey.slice(5, 7));
 
   function shift(delta: number) {
-    setAnchor((prev) => {
-      const m = prev.month + delta;
-      const year = prev.year + Math.floor((m - 1) / 12);
-      const month = ((((m - 1) % 12) + 12) % 12) + 1;
-      return { year, month };
-    });
+    if (granularity === "month") {
+      const next = new Date(Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth() + delta, 1));
+      const last = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+      next.setUTCDate(Math.min(anchorDate.getUTCDate(), last));
+      setAnchorKey(utcToKey(next));
+      return;
+    }
+    const step = granularity === "week" ? 7 : 1;
+    setAnchorKey(utcToKey(new Date(anchorDate.getTime() + delta * step * MS_DAY)));
   }
 
-  const todayKeyStr = dateKey(new Date().toISOString());
+  function renderChip(i: Interview, wrap = false) {
+    const t = tzParts(i.startTime as string);
+    return (
+      <button
+        key={i.id}
+        className={`calendar-chip status-${i.status}${wrap ? " wrap" : ""}`}
+        onClick={() => onEdit(i)}
+        title={`${i.company} ${i.position} ${i.round}`}
+      >
+        <span className="chip-time">
+          {pad(t.hour)}:{pad(t.minute)}
+        </span>
+        <span className="chip-label">
+          {i.company || i.position || "面试"}
+          {i.round ? ` · ${i.round}` : ""}
+        </span>
+      </button>
+    );
+  }
 
-  return (
-    <div className="calendar-view">
-      <div className="calendar-head">
-        <button className="btn small" onClick={() => shift(-1)}>
-          ← 上月
-        </button>
-        <h2>
-          {anchor.year} 年 {anchor.month} 月
-        </h2>
-        <button className="btn small" onClick={() => shift(1)}>
-          下月 →
-        </button>
+  function renderCell(key: string, opts: { tall?: boolean; weekday?: boolean } = {}) {
+    const items = byDay.get(key) ?? [];
+    const dayNum = Number(key.slice(8, 10));
+    const isToday = key === today;
+    return (
+      <div key={key} className={`calendar-cell${isToday ? " today" : ""}${opts.tall ? " tall" : ""}`}>
+        <div className="calendar-date">
+          {opts.weekday ? `周${WEEKDAYS[keyToUtc(key).getUTCDay()]} ` : ""}
+          {dayNum} 日
+        </div>
+        <div className="calendar-items">
+          {items.length === 0 && granularity === "day" ? (
+            <p className="calendar-empty-day">当天没有面试安排</p>
+          ) : (
+            items.map((i) => renderChip(i, granularity !== "month"))
+          )}
+        </div>
       </div>
+    );
+  }
 
-      <div className="calendar-grid">
+  let title: string;
+  let cells: React.ReactNode;
+  if (granularity === "month") {
+    title = `${ay} 年 ${am} 月`;
+    const firstWeekday = keyToUtc(`${anchorKey.slice(0, 7)}-01`).getUTCDay();
+    const daysInMonth = new Date(Date.UTC(ay, am, 0)).getUTCDate();
+    const list: (string | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) list.push(null);
+    for (let d = 1; d <= daysInMonth; d++) list.push(`${anchorKey.slice(0, 7)}-${pad(d)}`);
+    cells = (
+      <>
         {WEEKDAYS.map((w) => (
           <div key={w} className="calendar-weekday">
             周{w}
           </div>
         ))}
-        {cells.map((day, idx) => {
-          if (day === null) return <div key={`empty-${idx}`} className="calendar-cell empty" />;
-          const key = `${anchor.year}-${pad(anchor.month)}-${pad(day)}`;
-          const items = byDay.get(key) ?? [];
-          const isToday = key === todayKeyStr;
-          return (
-            <div key={key} className={`calendar-cell${isToday ? " today" : ""}`}>
-              <div className="calendar-date">{day}</div>
-              <div className="calendar-items">
-                {items.map((i) => {
-                  const t = tzParts(i.startTime as string);
-                  return (
-                    <button
-                      key={i.id}
-                      className={`calendar-chip status-${i.status}`}
-                      onClick={() => onEdit(i)}
-                      title={`${i.company} ${i.position} ${i.round}`}
-                    >
-                      <span className="chip-time">
-                        {pad(t.hour)}:{pad(t.minute)}
-                      </span>
-                      <span className="chip-label">
-                        {i.company || i.position || "面试"}
-                        {i.round ? ` · ${i.round}` : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+        {list.map((key, idx) =>
+          key === null ? (
+            <div key={`empty-${idx}`} className="calendar-cell empty" />
+          ) : (
+            renderCell(key)
+          ),
+        )}
+      </>
+    );
+  } else if (granularity === "week") {
+    const weekStart = new Date(anchorDate.getTime() - anchorDate.getUTCDay() * MS_DAY);
+    const weekEnd = new Date(weekStart.getTime() + 6 * MS_DAY);
+    const fmt = (d: Date) =>
+      d.getUTCMonth() === weekStart.getUTCMonth()
+        ? `${d.getUTCDate()} 日`
+        : `${d.getUTCMonth() + 1} 月 ${d.getUTCDate()} 日`;
+    title = `${weekStart.getUTCFullYear()} 年 ${weekStart.getUTCMonth() + 1} 月 ${fmt(weekStart)} – ${fmt(weekEnd)}`;
+    cells = (
+      <>
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="calendar-weekday">
+            周{w}
+          </div>
+        ))}
+        {Array.from({ length: 7 }, (_, i) =>
+          renderCell(utcToKey(new Date(weekStart.getTime() + i * MS_DAY)), {
+            tall: true,
+            weekday: true,
+          }),
+        )}
+      </>
+    );
+  } else {
+    title = `${ay} 年 ${am} 月 ${Number(anchorKey.slice(8, 10))} 日 周${WEEKDAYS[anchorDate.getUTCDay()]}`;
+    cells = renderCell(anchorKey, { weekday: true });
+  }
+
+  const unit = granularity === "month" ? "月" : granularity === "week" ? "周" : "日";
+
+  return (
+    <div className="calendar-view">
+      <div className="calendar-head">
+        <div className="calendar-scale">
+          {(["month", "week", "day"] as const).map((g) => (
+            <button
+              key={g}
+              className={`btn small${granularity === g ? " active" : ""}`}
+              onClick={() => setGranularity(g)}
+            >
+              {g === "month" ? "月" : g === "week" ? "周" : "日"}
+            </button>
+          ))}
+        </div>
+        <h2>{title}</h2>
+        <div className="calendar-nav">
+          <button className="btn small" onClick={() => shift(-1)}>
+            ← 上一{unit}
+          </button>
+          <button className="btn small" onClick={() => setAnchorKey(today)}>
+            今天
+          </button>
+          <button className="btn small" onClick={() => shift(1)}>
+            下一{unit} →
+          </button>
+        </div>
       </div>
+
+      <div className={`calendar-grid${granularity === "day" ? " single" : ""}`}>{cells}</div>
     </div>
   );
 }

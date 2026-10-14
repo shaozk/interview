@@ -291,15 +291,36 @@ textarea {
 .calendar-head {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 16px;
   margin-bottom: 12px;
+}
+
+.calendar-head h2 {
+  flex: 1;
+  text-align: center;
+  font-size: 16px;
+}
+
+.calendar-scale,
+.calendar-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.calendar-scale .btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
 }
 
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
+}
+
+.calendar-grid.single {
+  grid-template-columns: 1fr;
 }
 
 .calendar-weekday {
@@ -328,6 +349,16 @@ textarea {
 .calendar-cell.today {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary) inset;
+}
+
+.calendar-cell.tall {
+  min-height: 220px;
+}
+
+.calendar-empty-day {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0;
 }
 
 .calendar-date {
@@ -384,6 +415,17 @@ textarea {
 .chip-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.calendar-chip.wrap {
+  white-space: normal;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.calendar-chip.wrap .chip-label {
+  white-space: normal;
+  overflow: visible;
 }
 
 /* kanban */
