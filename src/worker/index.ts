@@ -11,10 +11,14 @@ import {
   type SessionUser,
 } from "./auth";
 import { rateLimit } from "./ratelimit";
+import { AiNotConfiguredError, parseWithAI } from "./ai";
 
 interface Env {
   DB: D1Database;
   CORS_ORIGINS?: string;
+  AI_API_KEY?: string;
+  AI_BASE_URL?: string;
+  AI_MODEL?: string;
 }
 
 interface Row {
@@ -401,17 +405,37 @@ async function handleApi(request: Request, env: Env, crossSite: boolean): Promis
 
   const user = await getSessionUser(env.DB, request);
 
-  if (path === "/api/me") {
-    if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
-    return user ? json({ email: user.email }) : json({ error: "unauthorized" }, 401);
-  }
+    if (path === "/api/me") {
+      if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+      return user
+        ? json({ email: user.email, aiEnabled: Boolean(env.AI_API_KEY) })
+        : json({ error: "unauthorized" }, 401);
+    }
 
-  if (path === "/api/logout") {
-    if (request.method === "POST") return logout(env.DB, request, crossSite);
-    return json({ error: "method not allowed" }, 405);
-  }
+    if (path === "/api/logout") {
+      if (request.method === "POST") return logout(env.DB, request, crossSite);
+      return json({ error: "method not allowed" }, 405);
+    }
 
-  if (!user) return json({ error: "unauthorized" }, 401);
+    if (!user) return json({ error: "unauthorized" }, 401);
+
+    if (path === "/api/parse") {
+      if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+      if (!env.AI_API_KEY) return json({ error: "AI 解析未配置：服务端未设置 AI_API_KEY" }, 503);
+      if (!rateLimit(`ai:${clientIp(request)}`, 20, RATE_WINDOW_MS)) {
+        return json({ error: "AI 解析过于频繁，请一小时后再试" }, 429);
+      }
+      const body = await readBody(request);
+      const text = body ? str(body.text).trim() : "";
+      if (!text) return json({ error: "缺少解析内容" }, 400);
+      try {
+        const meeting = await parseWithAI(text, env);
+        return json({ meeting });
+      } catch (err) {
+        if (err instanceof AiNotConfiguredError) return json({ error: err.message }, 503);
+        return json({ error: err instanceof Error ? err.message : String(err) }, 502);
+      }
+    }
 
   if (path === "/api/interviews") {
     if (request.method === "GET") return listInterviews(env.DB, user.id);

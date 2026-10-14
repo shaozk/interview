@@ -275,6 +275,7 @@ export function App() {
               key={editing?.id ?? "new"}
               initial={editing}
               submitting={submitting}
+              aiEnabled={me?.aiEnabled ?? false}
               onSubmit={handleSubmit}
               onCancel={() => setShowForm(false)}
             />

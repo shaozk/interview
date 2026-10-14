@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { parseMeeting } from "../../shared/parser";
+import type { ParsedMeeting } from "../../shared/types";
 import {
   PLATFORM_LABELS,
   ROUND_PRESETS,
@@ -11,10 +12,12 @@ import {
   type Platform,
 } from "../../shared/types";
 import { inputValueToIso, isoToInputValue } from "../format";
+import { api } from "../api";
 
 interface Props {
   initial?: Interview | null;
   submitting?: boolean;
+  aiEnabled?: boolean;
   onSubmit: (input: InterviewInput) => void;
   onCancel: () => void;
 }
@@ -56,20 +59,19 @@ function toInput(interview?: Interview | null): InterviewInput {
   };
 }
 
-export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props) {
+export function InterviewForm({ initial, submitting, aiEnabled, onSubmit, onCancel }: Props) {
   const [form, setForm] = useState<InterviewInput>(() => toInput(initial));
   const [paste, setPaste] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [aiParsing, setAiParsing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function set<K extends keyof InterviewInput>(key: K, value: InterviewInput[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleParse() {
-    if (!paste.trim()) return;
-    const result = parseMeeting(paste);
-    const m = result.meeting;
+  function applyParsed(m: ParsedMeeting, source?: string) {
     setForm((prev) => ({
       ...prev,
       company: m.company || prev.company,
@@ -86,8 +88,27 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
       notes: m.notes || prev.notes,
       rawText: paste,
     }));
-    setWarnings(result.warnings);
-    setConfidence(result.confidence);
+    setConfidence(m.confidence);
+    setWarnings([...(source ? [source] : []), ...m.warnings]);
+  }
+
+  function handleParse() {
+    if (!paste.trim()) return;
+    applyParsed(parseMeeting(paste).meeting);
+  }
+
+  async function handleAiParse() {
+    if (!paste.trim() || aiParsing) return;
+    try {
+      setAiParsing(true);
+      setError(null);
+      const { meeting } = await api.parseAI(paste);
+      applyParsed(meeting, "AI 解析结果，请核对");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAiParsing(false);
+    }
   }
 
   function handleSave() {
@@ -122,12 +143,22 @@ export function InterviewForm({ initial, submitting, onSubmit, onCancel }: Props
           <button type="button" className="btn" onClick={handleParse}>
             解析
           </button>
+          {aiEnabled && (
+            <button type="button" className="btn" disabled={aiParsing} onClick={() => void handleAiParse()}>
+              {aiParsing ? "AI 解析中…" : "AI 解析"}
+            </button>
+          )}
           {confidence !== null && (
             <span className="confidence">
               识别度 {Math.round(confidence * 100)}%
             </span>
           )}
         </div>
+        {error && (
+          <ul className="warnings">
+            <li>{error}</li>
+          </ul>
+        )}
         {warnings.length > 0 && (
           <ul className="warnings">
             {warnings.map((w) => (

@@ -1,7 +1,8 @@
-import type { Interview, InterviewInput } from "../shared/types";
+import type { Interview, InterviewInput, ParsedMeeting } from "../shared/types";
 
 export interface Me {
   email: string;
+  aiEnabled?: boolean;
 }
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -49,4 +50,9 @@ export const api = {
     }),
   remove: (id: string) =>
     request<{ ok: boolean }>(`/api/interviews/${id}`, { method: "DELETE" }),
+  parseAI: (text: string) =>
+    request<{ meeting: ParsedMeeting }>("/api/parse", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
 };
