@@ -36,10 +36,38 @@ export function LoginPage({ onAuthed }: Props) {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
+      <div className="auth-brand">
+        <img
+          className="auth-logo"
+          src={`${import.meta.env.BASE_URL}logo.svg`}
+          alt="面面 logo"
+        />
         <h1>面面</h1>
+        <p className="auth-tagline">面试日程集中管理 —— 粘贴邀请即建档，数据只属于你。</p>
+        <div className="auth-section">
+          <h2>主要功能</h2>
+          <ul>
+            <li>
+              粘贴飞书 / 腾讯会议 / Zoom / Teams / 邮件邀请，自动解析公司、职位、轮次、时间与会议号
+            </li>
+            <li>列表、日历（月 / 周 / 日）、看板、时间线四种视图</li>
+            <li>一键导出给 HR 的占用时段；面试结束后自动标记「已面试」</li>
+            <li>数据只存在你自己的 Cloudflare，按账号隔离</li>
+          </ul>
+        </div>
+        <div className="auth-section">
+          <h2>使用方法</h2>
+          <ol>
+            <li>注册并登录</li>
+            <li>把面试邀请正文粘贴进「新建面试」，自动解析回填</li>
+            <li>在日历 / 看板管理进度，面试前从卡片一键入会</li>
+          </ol>
+        </div>
+      </div>
+      <form className="auth-card" onSubmit={handleSubmit}>
+        <p className="auth-lead">{mode === "login" ? "登录" : "注册"}</p>
         <p className="muted small-text">
-          面试日程集中管理 · {mode === "login" ? "登录后查看你的面试日程" : "注册一个账号，数据只属于你"}
+          {mode === "login" ? "登录后查看你的面试日程" : "注册一个账号，数据只属于你"}
         </p>
         <label className="field">
           <span>邮箱</span>

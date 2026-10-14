@@ -9,7 +9,8 @@ dist-pages/
 MISSION.md
 NOTES.md
 RESOURCES.md
-/assets/
+/assets/*
+!/assets/logo.svg
 /lessons/
 /reference/
 /learning-records/
