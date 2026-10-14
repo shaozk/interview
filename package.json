@@ -5,6 +5,7 @@
   "description": "面面：面试日程集中管理。纯规则解析、零 AI 依赖，部署到你自己的 Cloudflare。",
   "type": "module",
   "scripts": {
+    "predev": "wrangler d1 migrations apply interview-db --local",
     "dev": "vite dev",
     "build": "npm run typecheck && vite build",
     "build:pages": "npm run typecheck && vite build --config vite.config.pages.ts",

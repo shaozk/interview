@@ -72,9 +72,10 @@
 
 ```bash
 npm install
-npm run migrate:local   # 首次运行前建本地表
-npm run dev             # http://localhost:5173，本地 D1 自动可用
+npm run dev             # http://localhost:5173；dev 前自动对本地 D1 apply migration
 ```
+
+`npm run dev` 走 `predev` 钩子自动建本地表（幂等），换 `database_id` 或换机器也不用手动迁移；需要手动执行时用 `npm run migrate:local`。
 
 其他命令：
 
