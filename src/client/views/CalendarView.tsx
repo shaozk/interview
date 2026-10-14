@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { Interview } from "../../shared/types";
-import { WEEKDAYS, dateKey, todayKey, tzParts } from "../format";
+import { PLATFORM_LABELS } from "../../shared/types";
+import { WEEKDAYS, dateKey, formatTimeRange, todayKey, tzParts } from "../format";
+import { InterviewCard } from "../components/InterviewCard";
 import type { ViewProps } from "../viewProps";
 
 type Granularity = "month" | "week" | "day";
@@ -22,7 +24,7 @@ function utcToKey(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-export function CalendarView({ interviews, onEdit }: ViewProps) {
+export function CalendarView({ interviews, onEdit, onDelete, onStatusChange }: ViewProps) {
   const [granularity, setGranularity] = useState<Granularity>("month");
   const [anchorKey, setAnchorKey] = useState(() => todayKey());
 
@@ -58,12 +60,27 @@ export function CalendarView({ interviews, onEdit }: ViewProps) {
     setAnchorKey(utcToKey(new Date(anchorDate.getTime() + delta * step * MS_DAY)));
   }
 
-  function renderChip(i: Interview, wrap = false) {
+  function renderChip(i: Interview) {
+    if (granularity === "week") {
+      const sub = [i.position, i.round, PLATFORM_LABELS[i.platform]].filter(Boolean).join(" · ");
+      return (
+        <button
+          key={i.id}
+          className={`calendar-chip status-${i.status} week`}
+          onClick={() => onEdit(i)}
+          title={`${i.company} ${i.position} ${i.round}`}
+        >
+          <span className="chip-time">{formatTimeRange(i.startTime, i.endTime)}</span>
+          <span className="chip-label">{i.company || i.position || "面试"}</span>
+          <span className="chip-sub">{sub}</span>
+        </button>
+      );
+    }
     const t = tzParts(i.startTime as string);
     return (
       <button
         key={i.id}
-        className={`calendar-chip status-${i.status}${wrap ? " wrap" : ""}`}
+        className={`calendar-chip status-${i.status}`}
         onClick={() => onEdit(i)}
         title={`${i.company} ${i.position} ${i.round}`}
       >
@@ -92,7 +109,7 @@ export function CalendarView({ interviews, onEdit }: ViewProps) {
           {items.length === 0 && granularity === "day" ? (
             <p className="calendar-empty-day">当天没有面试安排</p>
           ) : (
-            items.map((i) => renderChip(i, granularity !== "month"))
+            items.map((i) => renderChip(i))
           )}
         </div>
       </div>
@@ -149,7 +166,26 @@ export function CalendarView({ interviews, onEdit }: ViewProps) {
     );
   } else {
     title = `${ay} 年 ${am} 月 ${Number(anchorKey.slice(8, 10))} 日 周${WEEKDAYS[anchorDate.getUTCDay()]}`;
-    cells = renderCell(anchorKey, { weekday: true });
+    const items = byDay.get(anchorKey) ?? [];
+    cells = (
+      <div className="calendar-day-list">
+        {items.length === 0 ? (
+          <div className="card">
+            <p className="muted calendar-empty-day">当天没有面试安排</p>
+          </div>
+        ) : (
+          items.map((i) => (
+            <InterviewCard
+              key={i.id}
+              interview={i}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onStatusChange={onStatusChange}
+            />
+          ))
+        )}
+      </div>
+    );
   }
 
   const unit = granularity === "month" ? "月" : granularity === "week" ? "周" : "日";
@@ -182,7 +218,11 @@ export function CalendarView({ interviews, onEdit }: ViewProps) {
         </div>
       </div>
 
-      <div className={`calendar-grid${granularity === "day" ? " single" : ""}`}>{cells}</div>
+      {granularity === "day" ? (
+        cells
+      ) : (
+        <div className="calendar-grid">{cells}</div>
+      )}
     </div>
   );
 }

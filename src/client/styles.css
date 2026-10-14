@@ -319,10 +319,6 @@ textarea {
   gap: 6px;
 }
 
-.calendar-grid.single {
-  grid-template-columns: 1fr;
-}
-
 .calendar-weekday {
   text-align: center;
   color: var(--muted);
@@ -426,6 +422,38 @@ textarea {
 .calendar-chip.wrap .chip-label {
   white-space: normal;
   overflow: visible;
+}
+
+.calendar-chip.week {
+  flex-direction: column;
+  align-items: stretch;
+  white-space: normal;
+  padding: 8px 10px;
+  font-size: 12px;
+  gap: 2px;
+}
+
+.calendar-chip.week .chip-time {
+  font-size: 12px;
+}
+
+.calendar-chip.week .chip-label {
+  font-weight: 600;
+  white-space: normal;
+  overflow: visible;
+}
+
+.chip-sub {
+  font-size: 11px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-day-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* kanban */
