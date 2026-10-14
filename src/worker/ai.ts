@@ -18,8 +18,8 @@ const SYSTEM_PROMPT = `你是面试邀请解析器。从用户给的会议邀请
   "company": "公司品牌名，如：智驾新程（上海）智能科技有限公司 → 智驾新程；无则 \"\"",
   "position": "职位名，去掉工程师/专员等后缀亦可，如：智驾应用软件开发工程师 → 智驾应用软件开发",
   "round": "轮次，归一化为：笔试/一面/二面/三面/四面/五面/终面/HR面/群面/交叉面/加面；初面→一面，复面→二面；无则 \"一面\"",
-  "startTime": "开始时间，ISO 8601 含时区（北京时间请用 +08:00），如 2026-10-14T19:00:00+08:00；无则 null",
-  "endTime": "结束时间，同上；无则 null",
+  "startTime": "开始时间，北京时间挂钟时刻，格式 YYYY-MM-DDTHH:mm，例如 2026-10-20T14:00；不要附加时区后缀，不要换算成 UTC；无则 null",
+  "endTime": "结束时间，格式同 startTime；无则 null",
   "platform": "feishu|tencent|zoom|teams|google|other 之一",
   "meetingUrl": "入会链接 URL；无则 null",
   "meetingId": "会议号，仅数字/连字符；无则 null",
@@ -31,7 +31,7 @@ const SYSTEM_PROMPT = `你是面试邀请解析器。从用户给的会议邀请
 }
 
 规则：
-- 正文中的时间多为北京时间（GMT+8），转成 +08:00 的 ISO 8601
+- 正文中所有时间一律按北京时间（GMT+8）的挂钟时刻原样输出，禁止换算时区。例：会议时间 14:00-15:00（北京时间）→ "startTime": "…T14:00", "endTime": "…T15:00"
 - 相对时间（如"明天下午3点"）一律置 null，不要猜测
 - 不要编造任何正文中不存在的信息`;
 
@@ -53,9 +53,13 @@ function asNullableString(v: unknown, maxLen: number): string | null {
   return s === "" ? null : s;
 }
 
+/** 无时区的时间串按北京时间（+08:00）解释——AI 只输出文本中的挂钟时刻，时区由这里统一确定 */
 function asIsoOrNull(v: unknown): string | null {
-  const s = asString(v, 64);
+  let s = asString(v, 64);
   if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) {
+    s += s.length === 16 ? ":00+08:00" : "+08:00";
+  }
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

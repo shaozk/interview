@@ -34,6 +34,12 @@ describe("sanitizeParsed", () => {
     expect(out.confidence).toBe(0.5);
   });
 
+  it("interprets tz-naive times as beijing (+08:00)", () => {
+    const out = sanitizeParsed({ startTime: "2026-10-20T14:00", endTime: "2026-10-20T15:00:00" });
+    expect(out.startTime).toBe("2026-10-20T06:00:00.000Z");
+    expect(out.endTime).toBe("2026-10-20T07:00:00.000Z");
+  });
+
   it("drops unknown platform values and invalid timestamps", () => {
     const out = sanitizeParsed({
       platform: "wechat",
