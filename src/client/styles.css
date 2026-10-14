@@ -276,6 +276,10 @@ textarea {
   background: #fef3c7;
   color: #92400e;
 }
+.badge.status-interviewed {
+  background: #fef08a;
+  color: #713f12;
+}
 .badge.status-cancelled,
 .badge.status-rejected {
   background: #f1f5f9;
@@ -392,6 +396,10 @@ textarea {
   background: #fef3c7;
   color: #92400e;
 }
+.calendar-chip.status-interviewed {
+  background: #fef08a;
+  color: #713f12;
+}
 .calendar-chip.status-cancelled,
 .calendar-chip.status-rejected {
   background: #f1f5f9;
@@ -459,7 +467,7 @@ textarea {
 /* kanban */
 .kanban {
   display: grid;
-  grid-template-columns: repeat(6, minmax(180px, 1fr));
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
   gap: 12px;
   overflow-x: auto;
 }
@@ -493,6 +501,10 @@ textarea {
 .kanban-head.status-to-schedule {
   background: #fef3c7;
   color: #92400e;
+}
+.kanban-head.status-interviewed {
+  background: #fef08a;
+  color: #713f12;
 }
 .kanban-head.status-failed {
   background: #fee2e2;
@@ -574,6 +586,9 @@ textarea {
 }
 .timeline-dot.status-to-schedule {
   background: #d97706;
+}
+.timeline-dot.status-interviewed {
+  background: #eab308;
 }
 .timeline-dot.status-cancelled,
 .timeline-dot.status-rejected {

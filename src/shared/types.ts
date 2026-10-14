@@ -1,6 +1,7 @@
 export type InterviewStatus =
   | "to-schedule"
   | "scheduled"
+  | "interviewed"
   | "completed"
   | "cancelled"
   | "rejected"
@@ -62,6 +63,7 @@ export interface ParseResult {
 export const STATUS_LABELS: Record<InterviewStatus, string> = {
   "to-schedule": "待安排",
   scheduled: "待面试",
+  interviewed: "已面试",
   completed: "通过",
   cancelled: "已取消",
   rejected: "已拒绝",
@@ -71,6 +73,7 @@ export const STATUS_LABELS: Record<InterviewStatus, string> = {
 export const STATUS_ORDER: InterviewStatus[] = [
   "to-schedule",
   "scheduled",
+  "interviewed",
   "completed",
   "cancelled",
   "rejected",

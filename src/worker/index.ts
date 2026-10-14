@@ -63,12 +63,15 @@ function rowToInterview(row: Row): Interview {
 const STATUSES: InterviewStatus[] = [
   "to-schedule",
   "scheduled",
+  "interviewed",
   "completed",
   "cancelled",
   "rejected",
   "failed",
 ];
 const PLATFORMS: Platform[] = ["feishu", "tencent", "zoom", "teams", "google", "other"];
+// 无结束时间的面试：开始 2h 后视为已面试
+const INTERVIEWED_FALLBACK_MS = 2 * 60 * 60 * 1000;
 
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -234,7 +237,23 @@ async function logout(db: D1Database, request: Request, crossSite: boolean): Pro
   return json({ ok: true }, 200, { "set-cookie": clearedSessionCookie(crossSite) });
 }
 
+// 世界时间超过面试结束时间（无结束时间则开始后 2h）后，待面试自动变为已面试
+async function materializeInterviewed(db: D1Database, userId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const startCutoff = new Date(Date.now() - INTERVIEWED_FALLBACK_MS).toISOString();
+  await db
+    .prepare(
+      `UPDATE interviews SET status = 'interviewed', updated_at = ?
+       WHERE user_id = ? AND status = 'scheduled'
+         AND ((end_time IS NOT NULL AND end_time <= ?)
+           OR (end_time IS NULL AND start_time IS NOT NULL AND start_time <= ?))`,
+    )
+    .bind(now, userId, now, startCutoff)
+    .run();
+}
+
 async function listInterviews(db: D1Database, userId: string): Promise<Response> {
+  await materializeInterviewed(db, userId);
   const { results } = await db
     .prepare(
       `SELECT * FROM interviews WHERE user_id = ?
@@ -246,6 +265,7 @@ async function listInterviews(db: D1Database, userId: string): Promise<Response>
 }
 
 async function getInterview(db: D1Database, userId: string, id: string): Promise<Response> {
+  await materializeInterviewed(db, userId);
   const row = await db
     .prepare("SELECT * FROM interviews WHERE id = ? AND user_id = ?")
     .bind(id, userId)
